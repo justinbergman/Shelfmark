@@ -263,7 +263,7 @@ function BookForm({ kind, initial, onCancel, onSave }) {
       dateAdded: initial?.dateAdded || todayStr(),
     };
     if (kind === "collection") {
-      onSave({ ...base, status, priceFound: initial?.priceFound, pricePaid: initial?.pricePaid });
+      onSave({ ...base, status, priceFound: initial?.priceFound ?? null, pricePaid: initial?.pricePaid ?? null });
     } else {
       onSave({ ...base, priceFound: priceFound === "" ? null : Number(priceFound), priceDate, notes: notes.trim() });
     }
