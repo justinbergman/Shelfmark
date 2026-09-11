@@ -31,6 +31,16 @@
 <script src="firebase-config.js"></script>
 
 <!-- App code -->
-<script type="text/babel" data-presets="react" src="app.js"></script>
+<script>
+  fetch('app.js')
+    .then((r) => r.text())
+    .then((code) => {
+      const output = Babel.transform(code, { presets: [['react', { runtime: 'classic' }]] }).code;
+      const script = document.createElement('script');
+      script.text = output;
+      document.body.appendChild(script);
+    })
+    .catch((err) => console.error('Failed to load app.js', err));
+</script>
 </body>
 </html>
