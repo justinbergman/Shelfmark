@@ -83,13 +83,42 @@ async function fetchIsbnData(isbn) {
   }
 }
 
+async function fetchGoogleBooksData(isbn) {
+  try {
+    const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const item = (data.items || [])[0];
+    if (!item) return null;
+    const info = item.volumeInfo || {};
+    const rawCover = info.imageLinks ? (info.imageLinks.thumbnail || info.imageLinks.smallThumbnail) : null;
+    return {
+      title: info.title || "",
+      author: (info.authors || []).join(", "),
+      cover: rawCover ? rawCover.replace(/^http:\/\//, "https://") : null,
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
 async function lookupIsbn(isbn) {
-  for (const v of isbnVariants(isbn)) {
+  const variants = isbnVariants(isbn);
+
+  for (const v of variants) {
     const entry = await fetchIsbnData(v);
     if (entry) {
-      return { title: entry.title || "", author: (entry.authors || []).map((a) => a.name).join(", ") };
+      return { title: entry.title || "", author: (entry.authors || []).map((a) => a.name).join(", "), cover: null, source: "Open Library" };
     }
   }
+
+  for (const v of variants) {
+    const g = await fetchGoogleBooksData(v);
+    if (g && (g.title || g.author)) {
+      return { ...g, source: "Google Books" };
+    }
+  }
+
   return null;
 }
 
@@ -263,20 +292,21 @@ function BookForm({ kind, initial, onCancel, onSave }) {
   const [coverResults, setCoverResults] = useState(null);
   const [searchingCovers, setSearchingCovers] = useState(false);
 
-  async function handleLookup() {
-    if (!cleanIsbn(isbn)) return;
-    setLooking(true);
-    setLookupNote("");
-    const result = await lookupIsbn(isbn);
-    setLooking(false);
-    if (result) {
-      if (result.title) setTitle(result.title);
-      if (result.author) setAuthor(result.author);
-      setLookupNote("Filled in from Open Library.");
-    } else {
-      setLookupNote("Couldn't find that ISBN — enter details manually.");
-    }
+async function handleLookup() {
+  if (!cleanIsbn(isbn)) return;
+  setLooking(true);
+  setLookupNote("");
+  const result = await lookupIsbn(isbn);
+  setLooking(false);
+  if (result) {
+    if (result.title) setTitle(result.title);
+    if (result.author) setAuthor(result.author);
+    if (result.cover) setCoverOverride(result.cover);
+    setLookupNote(`Filled in from ${result.source}.`);
+  } else {
+    setLookupNote("Couldn't find that ISBN in Open Library or Google Books — enter details manually.");
   }
+}
 
   async function handleCoverSearch() {
     if (!title.trim()) return;
