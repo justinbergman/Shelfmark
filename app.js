@@ -92,6 +92,31 @@ async function lookupIsbn(isbn) {
   }
   return null;
 }
+
+async function searchTitleCovers(title, author) {
+  if (!title.trim()) return [];
+  const params = new URLSearchParams({
+    title: title.trim(),
+    fields: "title,author_name,cover_i,first_publish_year,isbn",
+    limit: "12",
+  });
+  if (author && author.trim()) params.set("author", author.trim());
+  try {
+    const res = await fetch(`https://openlibrary.org/search.json?${params.toString()}`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.docs || []).map((d) => ({
+      title: d.title,
+      author: (d.author_name || []).join(", "),
+      year: d.first_publish_year,
+      isbn: (d.isbn || [])[0] || null,
+      coverId: d.cover_i || null,
+    }));
+  } catch (e) {
+    return [];
+  }
+}
+
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -234,6 +259,9 @@ function BookForm({ kind, initial, onCancel, onSave }) {
   const [notes, setNotes] = useState(initial?.notes || "");
   const [looking, setLooking] = useState(false);
   const [lookupNote, setLookupNote] = useState("");
+  const [coverOverride, setCoverOverride] = useState(initial?.cover || null);
+  const [coverResults, setCoverResults] = useState(null);
+  const [searchingCovers, setSearchingCovers] = useState(false);
 
   async function handleLookup() {
     if (!cleanIsbn(isbn)) return;
@@ -250,6 +278,22 @@ function BookForm({ kind, initial, onCancel, onSave }) {
     }
   }
 
+  async function handleCoverSearch() {
+    if (!title.trim()) return;
+    setSearchingCovers(true);
+    const results = await searchTitleCovers(title, author);
+    setSearchingCovers(false);
+    setCoverResults(results);
+  }
+
+  function pickCover(r) {
+    if (r.title) setTitle(r.title);
+    if (r.author) setAuthor(r.author);
+    if (r.isbn) setIsbn(r.isbn);
+    setCoverOverride(r.coverId ? `https://covers.openlibrary.org/b/id/${r.coverId}-M.jpg` : null);
+    setCoverResults(null);
+  }
+
   function handleSubmit(e) {
     e.preventDefault();
     if (!title.trim()) return;
@@ -259,7 +303,7 @@ function BookForm({ kind, initial, onCancel, onSave }) {
       author: author.trim(),
       genre: genre.trim(),
       isbn: cleanIsbn(isbn),
-      cover: coverFromIsbn(isbn),
+      cover: coverOverride || coverFromIsbn(isbn),
       dateAdded: initial?.dateAdded || todayStr(),
     };
     if (kind === "collection") {
@@ -284,7 +328,7 @@ function BookForm({ kind, initial, onCancel, onSave }) {
         </div>
 
         <div className="mb-3">
-          <label className={label} style={{ color: C.stone }}>ISBN <span style={{ color: C.stone }}>(optional — for cover art &amp; autofill)</span></label>
+          <label className={label} style={{ color: C.stone }}>ISBN <span style={{ color: C.stone }}>(optional — for autofill)</span></label>
           <div className="flex gap-2">
             <input className={input} style={inputStyle} value={isbn} onChange={(e) => setIsbn(e.target.value)} placeholder="e.g. 9780143127550" />
             <button type="button" onClick={handleLookup} disabled={looking || !cleanIsbn(isbn)} className="px-3 text-sm shrink-0 disabled:opacity-40" style={{ background: C.moss, color: C.cream }}>
@@ -308,6 +352,40 @@ function BookForm({ kind, initial, onCancel, onSave }) {
             <label className={label} style={{ color: C.stone }}>Genre</label>
             <input className={input} style={inputStyle} value={genre} onChange={(e) => setGenre(e.target.value)} placeholder="e.g. Sci-fi" />
           </div>
+        </div>
+
+        <div className="mb-3">
+          <label className={label} style={{ color: C.stone }}>Cover</label>
+          <div className="flex items-center gap-3">
+            <Cover title={title} coverUrl={coverOverride} isbn={isbn} />
+            <button type="button" onClick={handleCoverSearch} disabled={!title.trim() || searchingCovers} className="px-3 py-2 text-sm disabled:opacity-40" style={{ background: C.moss, color: C.cream }}>
+              {searchingCovers ? <IconLoader size={14} className="animate-spin" /> : "Find cover options"}
+            </button>
+          </div>
+
+          {coverResults !== null && (
+            <div className="mt-2 p-3" style={{ border: `1px solid ${C.hairlineDark}`, background: C.cream }}>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs" style={{ color: C.stone }}>
+                  {coverResults.length === 0 ? "No matches found — try adjusting the title, or search by ISBN above." : "Pick a cover:"}
+                </p>
+                <button type="button" onClick={() => setCoverResults(null)} style={{ color: C.stone }}><IconX size={14} /></button>
+              </div>
+              <div className="grid grid-cols-4 gap-2 max-h-56 overflow-y-auto">
+                {coverResults.map((r, i) => (
+                  <button type="button" key={i} onClick={() => pickCover(r)} className="flex flex-col items-center gap-1 p-1 text-left" style={{ border: `1px solid ${C.hairlineDark}` }}>
+                    {r.coverId ? (
+                      <img src={`https://covers.openlibrary.org/b/id/${r.coverId}-S.jpg`} alt="" style={{ width: "100%", height: "64px", objectFit: "cover", background: C.hairline }} />
+                    ) : (
+                      <div className="w-full flex items-center justify-center text-[10px]" style={{ height: "64px", background: C.hairline, color: C.stone }}>No cover</div>
+                    )}
+                    <span className="text-[10px] leading-tight truncate w-full" style={{ color: C.ink }}>{r.title}</span>
+                    {r.year && <span className="text-[9px]" style={{ color: C.stone }}>{r.year}</span>}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {kind === "collection" ? (
