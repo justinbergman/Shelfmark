@@ -1,19 +1,17 @@
-// Paste in the config object from Firebase Console:
-// Project Settings (gear icon) > General tab > "Your apps" > Web app > SDK setup and configuration
-//
-// It's safe for this to be public / committed to GitHub — Firebase web config
-// values are not secret keys. Your data is protected by the Firestore
-// security rules (see firestore.rules), not by hiding this config.
+// Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
 
+// Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID",
+  apiKey: "AIzaSyCvcjK6nDZ3HN_m9rh2EzafqUnCWXa-RCE",
+  authDomain: "shelfmark-a9e59.firebaseapp.com",
+  projectId: "shelfmark-a9e59",
+  storageBucket: "shelfmark-a9e59.firebasestorage.app",
+  messagingSenderId: "564497315550",
+  appId: "1:564497315550:web:fb0150e41e359c0155b44f"
 };
 
-firebase.initializeApp(firebaseConfig);
-const auth = firebase.auth();
-const db = firebase.firestore();
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
