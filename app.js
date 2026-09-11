@@ -31,25 +31,66 @@ function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 function cleanIsbn(isbn) {
-  return (isbn || "").replace(/[^0-9Xx]/g, "");
+  return (isbn || "").replace(/[^0-9Xx]/g, "").toUpperCase();
 }
+
+// Convert between ISBN-10 and ISBN-13 so a lookup can try both formats,
+// since a given edition is sometimes only indexed under one of them.
+function isbn10to13(isbn10) {
+  if (isbn10.length !== 10) return null;
+  const digits = isbn10.slice(0, 9).split("").map(Number);
+  const withPrefix = [9, 7, 8, ...digits];
+  let sum = 0;
+  for (let i = 0; i < 12; i++) sum += withPrefix[i] * (i % 2 === 0 ? 1 : 3);
+  const check = (10 - (sum % 10)) % 10;
+  return withPrefix.join("") + check;
+}
+function isbn13to10(isbn13) {
+  if (isbn13.length !== 13 || !isbn13.startsWith("978")) return null;
+  const digits = isbn13.slice(3, 12).split("").map(Number);
+  let sum = 0;
+  for (let i = 0; i < 9; i++) sum += digits[i] * (10 - i);
+  const check = (11 - (sum % 11)) % 11;
+  return digits.join("") + (check === 10 ? "X" : String(check));
+}
+function isbnVariants(isbn) {
+  const c = cleanIsbn(isbn);
+  if (!c) return [];
+  if (c.length === 10) {
+    const alt = isbn10to13(c);
+    return alt ? [c, alt] : [c];
+  }
+  if (c.length === 13) {
+    const alt = isbn13to10(c);
+    return alt ? [c, alt] : [c];
+  }
+  return [c];
+}
+
 function coverFromIsbn(isbn) {
-  const c = cleanIsbn(isbn);
-  return c ? `https://covers.openlibrary.org/b/isbn/${c}-M.jpg` : null;
+  const [primary] = isbnVariants(isbn);
+  return primary ? `https://covers.openlibrary.org/b/isbn/${primary}-M.jpg` : null;
 }
-async function lookupIsbn(isbn) {
-  const c = cleanIsbn(isbn);
-  if (!c) return null;
+
+async function fetchIsbnData(isbn) {
   try {
-    const res = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${c}&jscmd=data&format=json`);
+    const res = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&jscmd=data&format=json`);
     if (!res.ok) return null;
     const data = await res.json();
-    const entry = data[`ISBN:${c}`];
-    if (!entry) return null;
-    return { title: entry.title || "", author: (entry.authors || []).map((a) => a.name).join(", ") };
+    return data[`ISBN:${isbn}`] || null;
   } catch (e) {
     return null;
   }
+}
+
+async function lookupIsbn(isbn) {
+  for (const v of isbnVariants(isbn)) {
+    const entry = await fetchIsbnData(v);
+    if (entry) {
+      return { title: entry.title || "", author: (entry.authors || []).map((a) => a.name).join(", ") };
+    }
+  }
+  return null;
 }
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
@@ -103,9 +144,17 @@ function Pill({ children, color }) {
   );
 }
 function Cover({ title, coverUrl, isbn }) {
-  const [broken, setBroken] = useState(false);
-  const src = coverUrl || coverFromIsbn(isbn);
-  if (!src || broken) {
+  const sources = React.useMemo(() => {
+    const list = [];
+    if (coverUrl) list.push(coverUrl);
+    isbnVariants(isbn).forEach((v) => list.push(`https://covers.openlibrary.org/b/isbn/${v}-M.jpg`));
+    return list;
+  }, [coverUrl, isbn]);
+  const [index, setIndex] = useState(0);
+  useEffect(() => setIndex(0), [coverUrl, isbn]);
+
+  const src = sources[index];
+  if (!src) {
     return (
       <div className="flex items-center justify-center shrink-0 text-sm"
         style={{ width: "44px", height: "60px", background: C.mossDeep, color: C.parchment, fontFamily: "'Source Serif 4', Georgia, serif" }}>
@@ -113,7 +162,10 @@ function Cover({ title, coverUrl, isbn }) {
       </div>
     );
   }
-  return <img src={src} alt="" onError={() => setBroken(true)} className="shrink-0 object-cover" style={{ width: "44px", height: "60px", background: C.hairline }} />;
+  return (
+    <img src={src} alt="" onError={() => setIndex((i) => i + 1)} className="shrink-0 object-cover"
+      style={{ width: "44px", height: "60px", background: C.hairline }} />
+  );
 }
 function IconButton({ onClick, title, children }) {
   return (
